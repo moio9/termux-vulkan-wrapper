@@ -27,6 +27,10 @@
  * Based on weston shared/os-compatibility.c
  */
 
+#ifdef __TERMUX__
+#define SYS_memfd_create 279
+#endif
+
 #include "anon_file.h"
 #include "detect_os.h"
 
@@ -120,7 +124,7 @@ os_create_anonymous_file(int64_t size, const char *debug_name)
 #if defined(HAVE_MEMFD_CREATE)
    if (!debug_name)
       debug_name = "mesa-shared";
-   fd = memfd_create(debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
+   fd = syscall(SYS_memfd_create, debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
 #elif DETECT_OS_ANDROID
    if (!debug_name)
       debug_name = "mesa-shared";
@@ -137,6 +141,11 @@ os_create_anonymous_file(int64_t size, const char *debug_name)
    char *name;
 
    path = getenv("XDG_RUNTIME_DIR");
+#ifdef __TERMUX__
+   if (!path) {
+      path = "@TERMUX_PREFIX@/tmp";
+   }
+#endif
    if (!path) {
       errno = ENOENT;
       return -1;

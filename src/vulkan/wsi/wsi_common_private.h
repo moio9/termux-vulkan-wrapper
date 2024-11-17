@@ -40,6 +40,8 @@ struct wsi_swapchain;
 #define WSI_DEBUG_NOSHM       (1ull << 2)
 #define WSI_DEBUG_LINEAR      (1ull << 3)
 #define WSI_DEBUG_DXGI        (1ull << 4)
+#define WSI_DEBUG_BLIT        (1ull << 8)
+#define WSI_DEBUG_NOSYNC      (1ull << 9)
 
 extern uint64_t WSI_DEBUG;
 
@@ -47,6 +49,7 @@ enum wsi_image_type {
    WSI_IMAGE_TYPE_CPU,
    WSI_IMAGE_TYPE_DRM,
    WSI_IMAGE_TYPE_DXGI,
+   WSI_IMAGE_TYPE_AHB,
 };
 
 struct wsi_base_image_params {
@@ -84,6 +87,9 @@ struct wsi_image_info {
    VkExternalMemoryImageCreateInfo ext_mem;
    VkImageFormatListCreateInfo format_list;
    VkImageDrmFormatModifierListCreateInfoEXT drm_mod_list;
+#ifdef __TERMUX__
+   struct AHardwareBuffer_Desc *ahb_desc;
+#endif
 
    enum wsi_image_type image_type;
    bool explicit_sync;
@@ -165,6 +171,9 @@ struct wsi_image {
    int dma_buf_fd;
 #endif
    void *cpu_map;
+#ifdef __TERMUX__
+   struct AHardwareBuffer *ahb;
+#endif
 };
 
 struct wsi_swapchain {
