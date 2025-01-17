@@ -283,6 +283,10 @@ struct wsi_device {
     struct wsi_interface *                  wsi[VK_ICD_WSI_PLATFORM_MAX];
 };
 
+bool
+wsi_init_pthread_cond_monotonic(pthread_cond_t* cond);
+
+
 typedef PFN_vkVoidFunction (VKAPI_PTR *WSI_FN_GetPhysicalDeviceProcAddr)(VkPhysicalDevice physicalDevice, const char* pName);
 
 struct wsi_device_options {

@@ -41,6 +41,9 @@
 
 #include <time.h>
 #include <stdlib.h>
+#ifndef __TERMUX__
+#include <bits/pthreadtypes.h>
+#endif
 #include <stdio.h>
 
 #ifndef _WIN32
@@ -63,6 +66,32 @@ static const struct debug_control debug_control[] = {
    { "nosync",       WSI_DEBUG_NOSYNC },
    { NULL, },
 };
+
+#if defined(HAVE_PTHREAD) && !defined(_WIN32)
+bool
+wsi_init_pthread_cond_monotonic(pthread_cond_t* cond){
+   pthread_condattr_t condattr;
+   bool ret = false;
+
+   if(pthread_condattr_init(&condattr) != 0)
+      goto fail_attr_init;
+
+   if (pthread_condattr_setclock(&condattr, CLOCK_MONOTONIC) != 0)
+      goto fail_attr_set;
+
+   if (pthread_cond_init(cond, &condattr) != 0)
+      goto fail_cond_init;
+
+   ret = true;
+
+   fail_cond_init:
+   fail_attr_set:
+      pthread_condattr_destroy(&condattr);
+   fail_attr_init:
+      return ret;
+}
+#endif
+
 
 static bool present_false(VkPhysicalDevice pdevice, int fd) {
    return false;
