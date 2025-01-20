@@ -61,7 +61,13 @@ static bool vulkan_library_init()
    if (vulkan_library_handle)
       return true;
 
-   WRAPPER_DEBUG = parse_debug_string(getenv("WRAPPER_DEBUG"),
+   char* debug_control_string = getenv("WRAPPER_DEBUG");
+
+   if (!debug_control_string) {
+      debug_control_string = "bc, placed";
+   }
+
+   WRAPPER_DEBUG = parse_debug_string(debug_control_string,
                                       debug_control);
 
    const char *env = getenv("WRAPPER_VULKAN_PATH");
