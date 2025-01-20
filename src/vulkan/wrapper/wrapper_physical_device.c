@@ -39,12 +39,26 @@ wrapper_setup_device_extensions(struct wrapper_physical_device *pdevice) {
       if (wrapper_filter_extensions.extensions[idx])
          continue;
 
-      exts->extensions[idx] = true;
+      pdevice->base_supported_extensions.extensions[idx] =
+         exts->extensions[idx] = true;
    }
 
    exts->KHR_present_wait = exts->KHR_timeline_semaphore;
 
    return VK_SUCCESS;
+}
+
+static void
+wrapper_apply_device_extension_blacklist(struct wrapper_physical_device *physical_device) {
+   const char *blacklist = getenv("WRAPPER_EXTENSION_BLACKLIST");
+   if (!blacklist)
+      return;
+
+   for (int i = 0; i < VK_DEVICE_EXTENSION_COUNT; i++) {
+      if (strstr(blacklist, vk_device_extensions[i].extensionName)) {
+         physical_device->vk.supported_extensions.extensions[i] = false;
+      }
+   }
 }
 
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
@@ -102,18 +116,33 @@ VkResult enumerate_physical_device(struct vk_instance *_instance)
                                              instance->dispatch_handle);
 
       wrapper_setup_device_extensions(pdevice);
+      wrapper_apply_device_extension_blacklist(pdevice);
       wrapper_setup_device_features(pdevice);
 
       struct vk_features *supported_features = &pdevice->vk.supported_features;
-      pdevice->backup_supported_features = *supported_features;
+      pdevice->base_supported_features = *supported_features;
       supported_features->presentId = true;
       supported_features->presentWait = supported_features->timelineSemaphore;
       supported_features->swapchainMaintenance1 = true;
       supported_features->imageCompressionControlSwapchain = false;
-      supported_features->memoryMapPlaced = true;
-      supported_features->memoryUnmapReserve = true;
-      supported_features->multiViewport = true;
-      supported_features->textureCompressionBC = true;
+
+      pdevice->enable_bc =
+         !supported_features->textureCompressionBC
+         && (WRAPPER_DEBUG & WRAPPER_BC);
+
+      if (pdevice->enable_bc)
+         supported_features->textureCompressionBC = true;
+
+      pdevice->enable_map_memory_placed =
+         !pdevice->vk.supported_extensions.EXT_map_memory_placed
+         && (WRAPPER_DEBUG & WRAPPER_MAP_MEMORY_PLACED);
+
+      if (pdevice->enable_map_memory_placed) {
+         pdevice->vk.supported_extensions.EXT_map_memory_placed = true;
+         pdevice->vk.supported_extensions.KHR_map_memory2 = true;
+         supported_features->memoryMapPlaced = true;
+         supported_features->memoryUnmapReserve = true;
+      }
 
       result = wsi_device_init(&pdevice->wsi_device,
                                wrapper_physical_device_to_handle(pdevice),
@@ -130,8 +159,32 @@ VkResult enumerate_physical_device(struct vk_instance *_instance)
       pdevice->wsi_device.wants_ahardware_buffer = true;
 #endif
 
+      pdevice->driver_properties = (VkPhysicalDeviceDriverProperties) {
+         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+      };
+      pdevice->properties2 = (VkPhysicalDeviceProperties2) {
+         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+         .pNext = &pdevice->driver_properties,
+      };
+      pdevice->dispatch_table.GetPhysicalDeviceProperties2(
+         pdevice->dispatch_handle, &pdevice->properties2);
+
       pdevice->dispatch_table.GetPhysicalDeviceMemoryProperties(
          pdevice->dispatch_handle, &pdevice->memory_properties);
+
+      const char *app_name = instance->vk.app_info.app_name
+         ? instance->vk.app_info.app_name : "wrapper";
+
+      if (pdevice->driver_properties.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY &&
+          pdevice->properties2.properties.driverVersion > VK_MAKE_VERSION(512, 744, 0) &&
+          strstr(app_name, "clvk")) {
+         /* HACK: Fixed clvk not working on qualcomm proprietary driver. */
+         supported_features->globalPriorityQuery = false;
+      }
+
+      pdevice->dma_heap_fd = open("/dev/dma_heap/system", O_RDONLY);
+      if (pdevice->dma_heap_fd < 0)
+         pdevice->dma_heap_fd = open("/dev/ion", O_RDONLY);
 
       list_addtail(&pdevice->vk.link, &_instance->physical_devices.list);
    }
@@ -140,6 +193,10 @@ VkResult enumerate_physical_device(struct vk_instance *_instance)
 }
 
 void destroy_physical_device(struct vk_physical_device *pdevice) {
+   VK_FROM_HANDLE(wrapper_physical_device, wpdevice,
+                  vk_physical_device_to_handle(pdevice));
+   if (wpdevice->dma_heap_fd != -1)
+      close(wpdevice->dma_heap_fd);
    wsi_device_finish(pdevice->wsi_device, &pdevice->instance->alloc);
    vk_physical_device_finish(pdevice);
    vk_free(&pdevice->instance->alloc, pdevice);

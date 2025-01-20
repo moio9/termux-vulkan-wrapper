@@ -1,11 +1,17 @@
 #include "wrapper_private.h"
 #include "wrapper_entrypoints.h"
 #include "vk_alloc.h"
-#include <android/log.h>
-#include <sys/stat.h>
 #include "vk_common_entrypoints.h"
 #include "vk_dispatch_table.h"
 #include "vk_extensions.h"
+
+uint64_t WRAPPER_DEBUG;
+
+static const struct debug_control debug_control[] = {
+   { "placed",       WRAPPER_MAP_MEMORY_PLACED },
+   { "bc",           WRAPPER_BC },
+   { NULL, },
+};
 
 const struct vk_instance_extension_table wrapper_instance_extensions = {
    .KHR_get_surface_capabilities2 = true,
@@ -33,12 +39,9 @@ const struct vk_instance_extension_table wrapper_instance_extensions = {
    .EXT_direct_mode_display = true,
 #endif
    .EXT_headless_surface = true,
-   .EXT_debug_utils = true,
-   .EXT_debug_report = true,
 };
 
 static void *vulkan_library_handle;
-
 static PFN_vkCreateInstance create_instance;
 static PFN_vkGetInstanceProcAddr get_instance_proc_addr;
 static PFN_vkEnumerateInstanceVersion enumerate_instance_version;
@@ -53,40 +56,17 @@ static struct vk_instance_extension_table *supported_instance_extensions;
 
 #include <dlfcn.h>
 
-void *get_vulkan_handle() 
-{
-   char *driver = getenv("WRAPPER_VULKAN_PATH");
-   char *hooks = getenv("WRAPPER_HOOKS_PATH");
-
-   struct stat sb;
-
-   if (driver && (stat(driver, &sb) == 0)) {
-      if (!hooks)
-         asprintf(&hooks, "%s/%s", getenv("PREFIX"), "lib");
-
-      const char *name = strrchr(driver, '/') + 1;
-      char *path = malloc(strlen(driver) - strlen(name));
-      
-      if (name)
-         memcpy(path, driver, strlen(driver) - strlen(name));
-         
-      char *temp;
-      asprintf(&temp, "%s%s", path, "temp");
-      mkdir(temp, S_IRWXU | S_IRWXG);
-      
-      return  adrenotools_open_libvulkan(RTLD_NOW, ADRENOTOOLS_DRIVER_CUSTOM, temp, hooks, path, name, NULL, NULL);
-   }
-   else 
-      return dlopen(DEFAULT_VULKAN_PATH, RTLD_NOW | RTLD_LOCAL);
-}
-
 static bool vulkan_library_init()
-{  
+{
+   if (vulkan_library_handle)
+      return true;
 
-  if (vulkan_library_handle)
-    return true;
-      
-   vulkan_library_handle = get_vulkan_handle();
+   WRAPPER_DEBUG = parse_debug_string(getenv("WRAPPER_DEBUG"),
+                                      debug_control);
+
+   const char *env = getenv("WRAPPER_VULKAN_PATH");
+   vulkan_library_handle = dlopen(env ? env : DEFAULT_VULKAN_PATH,
+                                  RTLD_LOCAL | RTLD_NOW);
 
    if (vulkan_library_handle) {
       create_instance = dlsym(vulkan_library_handle, "vkCreateInstance");
@@ -139,6 +119,11 @@ static VkResult wrapper_vulkan_init()
 
       supported_instance_extensions->extensions[idx] = true;
    }
+
+   /* Block extensions that don't work. */
+   supported_instance_extensions->EXT_debug_utils = false;
+   supported_instance_extensions->EXT_debug_report = false;
+   supported_instance_extensions->KHR_device_group_creation = false;
 
    return VK_SUCCESS;
 }
@@ -196,6 +181,7 @@ wrapper_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 {
    const char *wrapper_enable_extensions[VK_INSTANCE_EXTENSION_COUNT];
    uint32_t wrapper_enable_extension_count = 0;
+   VkApplicationInfo wrapper_application_info = {};
    VkInstanceCreateInfo wrapper_create_info = *pCreateInfo;
    struct vk_instance_dispatch_table dispatch_table;
    struct wrapper_instance *instance;
@@ -217,7 +203,7 @@ wrapper_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 
    result = vk_instance_init(&instance->vk, supported_instance_extensions,
                              &dispatch_table, pCreateInfo,
-                             pAllocator ? pAllocator : vk_default_allocator());                           
+                             pAllocator ? pAllocator : vk_default_allocator());
 
    if (result != VK_SUCCESS) {
       vk_free2(vk_default_allocator(), pAllocator, instance);
@@ -242,6 +228,15 @@ wrapper_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
                                    &wrapper_enable_extension_count,
                                    wrapper_enable_extensions);
 
+   if (wrapper_create_info.pApplicationInfo) {
+      wrapper_application_info = *wrapper_create_info.pApplicationInfo;
+   } else {
+      wrapper_application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+      wrapper_application_info.pApplicationName = "wrapper";
+      wrapper_application_info.pEngineName = "wrapper";
+   }
+   enumerate_instance_version(&wrapper_application_info.apiVersion);
+   wrapper_create_info.pApplicationInfo = &wrapper_application_info;
    wrapper_create_info.enabledExtensionCount = wrapper_enable_extension_count;
    wrapper_create_info.ppEnabledExtensionNames = wrapper_enable_extensions;
 
@@ -252,7 +247,6 @@ wrapper_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       vk_free2(vk_default_allocator(), pAllocator, instance);
       return vk_error(NULL, result);
    }
-   
    vk_instance_dispatch_table_load(&instance->dispatch_table,
                                    get_instance_proc_addr,
                                    instance->dispatch_handle);
@@ -271,37 +265,6 @@ wrapper_DestroyInstance(VkInstance _instance,
                                             pAllocator);
    vk_instance_finish(&instance->vk);
    vk_free2(&instance->vk.alloc, pAllocator, instance);
-}
-
-VKAPI_ATTR void VKAPI_CALL
-wrapper_DebugReportMessageEXT(VkInstance _instance,
-                                VkDebugReportFlagsEXT flags,
-                                VkDebugReportObjectTypeEXT objectType,
-                                uint64_t object,
-                                size_t location,
-                                int32_t messageCode,
-                                const char* pLayerPrefix,
-                                const char* pMessage)
-{
-   VK_FROM_HANDLE(wrapper_instance, instance, _instance);
-
-   switch (objectType) {
-   case VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT:
-   case VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT:
-   case VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT:
-   case VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT:
-   case VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT:
-   case VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT:
-   case VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT:
-   case VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT:
-      break;
-   default:
-      object = (uint64_t)VK_NULL_HANDLE;
-   }
-
-   vk_common_DebugReportMessageEXT(instance->dispatch_handle, flags,
-                                   objectType, object, location, messageCode,
-                                   pLayerPrefix, pMessage);
 }
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL

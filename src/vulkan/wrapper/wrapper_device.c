@@ -9,6 +9,7 @@
 #include "vk_queue.h"
 #include "vk_util.h"
 #include "util/list.h"
+#include "util/simple_mtx.h"
 
 const struct vk_device_extension_table wrapper_device_extensions =
 {
@@ -21,8 +22,6 @@ const struct vk_device_extension_table wrapper_device_extensions =
    .KHR_present_id = true,
    .KHR_present_wait = true,
    .KHR_incremental_present = true,
-   .KHR_map_memory2 = true,
-   .EXT_map_memory_placed = true,
 };
 
 const struct vk_device_extension_table wrapper_filter_extensions =
@@ -30,20 +29,22 @@ const struct vk_device_extension_table wrapper_filter_extensions =
    .EXT_hdr_metadata = true,
    .GOOGLE_display_timing = true,
    .KHR_shared_presentable_image = true,
-   .KHR_shader_float_controls = true,
    .EXT_image_compression_control_swapchain = true,
 };
 
 static void
-wrapper_filter_enabled_extensions(const struct vk_device *device,
+wrapper_filter_enabled_extensions(const struct wrapper_device *device,
                                   uint32_t *enable_extension_count,
                                   const char **enable_extensions)
 {
    for (int idx = 0; idx < VK_DEVICE_EXTENSION_COUNT; idx++) {
-      if (!device->enabled_extensions.extensions[idx])
+      if (!device->vk.enabled_extensions.extensions[idx])
          continue;
 
-      if (wrapper_device_extensions.extensions[idx]) 
+      if (!device->physical->base_supported_extensions.extensions[idx])
+         continue;
+
+      if (wrapper_device_extensions.extensions[idx])
          continue;
 
       if (wrapper_filter_extensions.extensions[idx])
@@ -98,9 +99,21 @@ wrapper_create_device_queue(struct wrapper_device *device,
          if (!queue)
             return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-         device->dispatch_table.GetDeviceQueue(device->dispatch_handle,
-                                               create_info->queueFamilyIndex,
-                                               j, &queue->dispatch_handle);;
+         if (create_info->flags) {
+            device->dispatch_table.GetDeviceQueue2(
+               device->dispatch_handle,
+               &(VkDeviceQueueInfo2) {
+                  .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2,
+                  .flags = create_info->flags,
+                  .queueFamilyIndex = create_info->queueFamilyIndex,
+                  .queueIndex = j,
+               },
+               &queue->dispatch_handle);;
+         } else {
+            device->dispatch_table.GetDeviceQueue(
+               device->dispatch_handle, create_info->queueFamilyIndex,
+               j, &queue->dispatch_handle);
+         }
          queue->device = device;
 
          result = vk_queue_init(&queue->vk, &device->vk, create_info, j);
@@ -135,16 +148,10 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
    if (!device)
       return vk_error(physical_device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   list_inithead(&device->command_buffers);
+   list_inithead(&device->command_buffer_list);
+   list_inithead(&device->device_memory_list);
+   simple_mtx_init(&device->resource_mutex, mtx_plain);
    device->physical = physical_device;
-   device->memorys = _mesa_hash_table_create(NULL,
-                                             _mesa_hash_pointer,
-                                             _mesa_key_pointer_equal);
-   if (!device->memorys) {
-      vk_free2(&physical_device->instance->vk.alloc, pAllocator,
-               device);
-      return vk_error(physical_device, VK_ERROR_OUT_OF_HOST_MEMORY);
-   }
 
    vk_device_dispatch_table_from_entrypoints(
       &dispatch_table, &wrapper_device_entrypoints, true);
@@ -162,34 +169,23 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
       return vk_error(physical_device, result);
    }
 
-   wrapper_filter_enabled_extensions(&device->vk,
-                                     &wrapper_enable_extension_count,
-                                     wrapper_enable_extensions);
+   wrapper_filter_enabled_extensions(device,
+      &wrapper_enable_extension_count, wrapper_enable_extensions);
    wrapper_append_required_extensions(&device->vk,
-                                      &wrapper_enable_extension_count,
-                                      wrapper_enable_extensions);
+      &wrapper_enable_extension_count, wrapper_enable_extensions);
 
    wrapper_create_info.enabledExtensionCount = wrapper_enable_extension_count;
    wrapper_create_info.ppEnabledExtensionNames = wrapper_enable_extensions;
 
-   pdf = (void *)pCreateInfo->pEnabledFeatures;
-   if (pdf && pdf->textureCompressionBC) {
-      pdf->textureCompressionBC &=
-         physical_device->backup_supported_features.textureCompressionBC;
-   }
-   if (pdf && pdf->multiViewport) {
-         pdf->multiViewport &=
-            physical_device->backup_supported_features.multiViewport;
-   }
-   pdf2 = __vk_find_struct((void *)pCreateInfo->pNext,
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
-   if (pdf2 && pdf2->features.textureCompressionBC) {
-      pdf2->features.textureCompressionBC &=
-         physical_device->backup_supported_features.textureCompressionBC;
-   }
-   if (pdf2 && pdf2->features.multiViewport) {
-         pdf2->features.multiViewport &=
-            physical_device->backup_supported_features.multiViewport;
+   if (physical_device->enable_bc) {
+      pdf = (void *)pCreateInfo->pEnabledFeatures;
+      if (pdf && pdf->textureCompressionBC)
+         pdf->textureCompressionBC = false;
+
+      pdf2 = __vk_find_struct((void *)pCreateInfo->pNext,
+         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
+      if (pdf2 && pdf2->features.textureCompressionBC)
+         pdf2->features.textureCompressionBC = false;
    }
 
    result = physical_device->dispatch_table.CreateDevice(
@@ -197,8 +193,8 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
          pAllocator, &device->dispatch_handle);
 
    if (result != VK_SUCCESS) {
-      vk_device_finish(&device->vk);
-      vk_free(&device->vk.alloc, device);
+      wrapper_DestroyDevice(wrapper_device_to_handle(device),
+                            &device->vk.alloc);
       return vk_error(physical_device, result);
    }
 
@@ -214,6 +210,19 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
       return vk_error(physical_device, result);
    }
 
+   if (!physical_device->enable_map_memory_placed) {
+      device->vk.dispatch_table.AllocateMemory =
+         wrapper_device_trampolines.AllocateMemory;
+      device->vk.dispatch_table.MapMemory2KHR =
+         wrapper_device_trampolines.MapMemory2KHR;
+      device->vk.dispatch_table.UnmapMemory =
+         wrapper_device_trampolines.UnmapMemory;
+      device->vk.dispatch_table.UnmapMemory2KHR =
+         wrapper_device_trampolines.UnmapMemory2KHR;
+      device->vk.dispatch_table.FreeMemory =
+         wrapper_device_trampolines.FreeMemory;
+   }
+
    *pDevice = wrapper_device_to_handle(device);
 
    return VK_SUCCESS;
@@ -226,9 +235,21 @@ wrapper_GetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-wrapper_GetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* pQueueInfo,
+wrapper_GetDeviceQueue2(VkDevice _device, const VkDeviceQueueInfo2* pQueueInfo,
                         VkQueue* pQueue) {
-   vk_common_GetDeviceQueue2(device, pQueueInfo, pQueue);
+   VK_FROM_HANDLE(vk_device, device, _device);
+
+   struct vk_queue *queue = NULL;
+   vk_foreach_queue(iter, device) {
+      if (iter->queue_family_index == pQueueInfo->queueFamilyIndex &&
+          iter->index_in_family == pQueueInfo->queueIndex &&
+          iter->flags == pQueueInfo->flags) {
+         queue = iter;
+         break;
+      }
+   }
+
+   *pQueue = queue ? vk_queue_to_handle(queue) : VK_NULL_HANDLE;
 }
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
@@ -242,23 +263,30 @@ wrapper_QueueSubmit(VkQueue _queue, uint32_t submitCount,
                     const VkSubmitInfo* pSubmits, VkFence fence)
 {
    VK_FROM_HANDLE(wrapper_queue, queue, _queue);
-   VkCommandBuffer wrapper_command_buffers[submitCount][32];
    VkSubmitInfo wrapper_submits[submitCount];
+   VkCommandBuffer *command_buffers;
+   VkResult result;
 
    for (int i = 0; i < submitCount; i++) {
       const VkSubmitInfo *submit_info = &pSubmits[i];
+      command_buffers = malloc(sizeof(VkCommandBuffer) *
+         submit_info->commandBufferCount);
       for (int j = 0; j < submit_info->commandBufferCount; j++) {
          VK_FROM_HANDLE(wrapper_command_buffer, wcb,
                         submit_info->pCommandBuffers[j]);
-         wrapper_command_buffers[i][j] = wcb->dispatch_handle;
+         command_buffers[j] = wcb->dispatch_handle;
       }
       wrapper_submits[i] = pSubmits[i];
-      wrapper_submits[i].pCommandBuffers = wrapper_command_buffers[i];
+      wrapper_submits[i].pCommandBuffers = command_buffers;
    }
-   return queue->device->dispatch_table.QueueSubmit(queue->dispatch_handle,
-                                                    submitCount,
-                                                    wrapper_submits,
-                                                    fence);
+
+   result = queue->device->dispatch_table.QueueSubmit(
+      queue->dispatch_handle, submitCount, wrapper_submits, fence);
+
+   for (int i = 0; i < submitCount; i++)
+      free((void *)wrapper_submits[i].pCommandBuffers);
+
+   return result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -266,24 +294,48 @@ wrapper_QueueSubmit2(VkQueue _queue, uint32_t submitCount,
                      const VkSubmitInfo2* pSubmits, VkFence fence)
 {
    VK_FROM_HANDLE(wrapper_queue, queue, _queue);
-   VkCommandBufferSubmitInfo wrapper_command_buffers[submitCount][32];
    VkSubmitInfo2 wrapper_submits[submitCount];
+   VkCommandBufferSubmitInfo *command_buffers;
+   VkResult result;
 
    for (int i = 0; i < submitCount; i++) {
       const VkSubmitInfo2 *submit_info = &pSubmits[i];
+      command_buffers = malloc(sizeof(VkCommandBufferSubmitInfo) *
+         submit_info->commandBufferInfoCount);
       for (int j = 0; j < submit_info->commandBufferInfoCount; j++) {
          VK_FROM_HANDLE(wrapper_command_buffer, wcb,
                         submit_info->pCommandBufferInfos[j].commandBuffer);
-         wrapper_command_buffers[i][j] = pSubmits[i].pCommandBufferInfos[j];
-         wrapper_command_buffers[i][j].commandBuffer = wcb->dispatch_handle;
+         command_buffers[j] = pSubmits[i].pCommandBufferInfos[j];
+         command_buffers[j].commandBuffer = wcb->dispatch_handle;
       }
       wrapper_submits[i] = pSubmits[i];
-      wrapper_submits[i].pCommandBufferInfos = wrapper_command_buffers[i];
+      wrapper_submits[i].pCommandBufferInfos = command_buffers;
    }
-   return queue->device->dispatch_table.QueueSubmit2(queue->dispatch_handle,
-                                                     submitCount,
-                                                     wrapper_submits,
-                                                     fence);
+
+   result = queue->device->dispatch_table.QueueSubmit2(
+      queue->dispatch_handle, submitCount, wrapper_submits, fence);
+
+   for (int i = 0; i < submitCount; i++)
+      free((void *)wrapper_submits[i].pCommandBufferInfos);
+
+   return result;
+}
+
+
+VKAPI_ATTR void VKAPI_CALL
+wrapper_CmdExecuteCommands(VkCommandBuffer commandBuffer,
+                           uint32_t commandBufferCount,
+                           const VkCommandBuffer* pCommandBuffers)
+{
+   VK_FROM_HANDLE(wrapper_command_buffer, wcb, commandBuffer);
+   VkCommandBuffer command_buffers[commandBufferCount];
+
+   for (int i = 0; i < commandBufferCount; i++) {
+      command_buffers[i] =
+         wrapper_command_buffer_from_handle(pCommandBuffers[i])->dispatch_handle;
+   }
+   wcb->device->dispatch_table.CmdExecuteCommands(
+      wcb->dispatch_handle, commandBufferCount, command_buffers);
 }
 
 static VkResult
@@ -291,19 +343,19 @@ wrapper_command_buffer_create(struct wrapper_device *device,
                               VkCommandPool pool,
                               VkCommandBuffer dispatch_handle,
                               VkCommandBuffer *pCommandBuffers) {
-   struct wrapper_command_buffer *wrapper_command_buffer;
-   wrapper_command_buffer = vk_object_zalloc(&device->vk, &device->vk.alloc,
-                              sizeof(struct wrapper_command_buffer),
-                              VK_OBJECT_TYPE_COMMAND_BUFFER);
-   if (!wrapper_command_buffer)
+   struct wrapper_command_buffer *wcb;
+   wcb = vk_object_zalloc(&device->vk, &device->vk.alloc,
+                          sizeof(struct wrapper_command_buffer),
+                          VK_OBJECT_TYPE_COMMAND_BUFFER);
+   if (!wcb)
       return vk_error(&device->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   wrapper_command_buffer->device = device;
-   wrapper_command_buffer->pool = pool;
-   wrapper_command_buffer->dispatch_handle = dispatch_handle;
-   list_add(&wrapper_command_buffer->link, &device->command_buffers);
+   wcb->device = device;
+   wcb->pool = pool;
+   wcb->dispatch_handle = dispatch_handle;
+   list_add(&wcb->link, &device->command_buffer_list);
 
-   *pCommandBuffers = wrapper_command_buffer_to_handle(wrapper_command_buffer);
+   *pCommandBuffers = wrapper_command_buffer_to_handle(wcb);
 
    return VK_SUCCESS;
 }
@@ -312,7 +364,7 @@ static void
 wrapper_command_buffer_destroy(struct wrapper_device *device,
                                struct wrapper_command_buffer *wcb) {
    list_del(&wcb->link);
-   vk_object_free(&device->vk, NULL, wcb);
+   vk_object_free(&device->vk, &device->vk.alloc, wcb);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -324,12 +376,14 @@ wrapper_AllocateCommandBuffers(VkDevice _device,
    VkCommandBuffer dispatch_handles[pAllocateInfo->commandBufferCount];
    VkResult result;
    uint32_t i;
-
+   
    result = device->dispatch_table.AllocateCommandBuffers(device->dispatch_handle,
                                                           pAllocateInfo,
                                                           dispatch_handles);
    if (result != VK_SUCCESS)
       return result;
+
+   simple_mtx_lock(&device->resource_mutex);
 
    for (i = 0; i < pAllocateInfo->commandBufferCount; i++) {
       result = wrapper_command_buffer_create(device,
@@ -350,13 +404,14 @@ wrapper_AllocateCommandBuffers(VkDevice _device,
          wrapper_command_buffer_destroy(device, wcb);
       }
 
-      for (i = 0; i < pAllocateInfo->commandBufferCount; i++)
+      for (i = 0; i < pAllocateInfo->commandBufferCount; i++) {
          pCommandBuffers[i] = VK_NULL_HANDLE;
-
-      return result;
+      }
    }
 
-   return VK_SUCCESS;
+   simple_mtx_unlock(&device->resource_mutex);
+
+   return result;
 }
 
 
@@ -369,11 +424,16 @@ wrapper_FreeCommandBuffers(VkDevice _device,
    VK_FROM_HANDLE(wrapper_device, device, _device);
    VkCommandBuffer dispatch_handles[commandBufferCount];
 
+   simple_mtx_lock(&device->resource_mutex);
+
    for (int i = 0; i < commandBufferCount; i++) {
       VK_FROM_HANDLE(wrapper_command_buffer, wcb, pCommandBuffers[i]);
       dispatch_handles[i] = wcb->dispatch_handle;
       wrapper_command_buffer_destroy(device, wcb);
    }
+
+   simple_mtx_unlock(&device->resource_mutex);
+
    device->dispatch_table.FreeCommandBuffers(device->dispatch_handle,
                                              commandPool, commandBufferCount,
                                              dispatch_handles);
@@ -384,12 +444,18 @@ wrapper_DestroyCommandPool(VkDevice _device, VkCommandPool commandPool,
                            const VkAllocationCallbacks* pAllocator)
 {
    VK_FROM_HANDLE(wrapper_device, device, _device);
+
+   simple_mtx_lock(&device->resource_mutex);
+
    list_for_each_entry_safe(struct wrapper_command_buffer, wcb,
-                            &device->command_buffers, link) {
+                            &device->command_buffer_list, link) {
       if (wcb->pool == commandPool) {
          wrapper_command_buffer_destroy(device, wcb);
       }
    }
+
+   simple_mtx_unlock(&device->resource_mutex);
+
    device->dispatch_table.DestroyCommandPool(device->dispatch_handle,
                                              commandPool, pAllocator);
 }
@@ -398,15 +464,69 @@ VKAPI_ATTR void VKAPI_CALL
 wrapper_DestroyDevice(VkDevice _device, const VkAllocationCallbacks* pAllocator)
 {
    VK_FROM_HANDLE(wrapper_device, device, _device);
+
+   simple_mtx_lock(&device->resource_mutex);
+
    list_for_each_entry_safe(struct wrapper_command_buffer, wcb,
-                            &device->command_buffers, link) {
+                            &device->command_buffer_list, link) {
       wrapper_command_buffer_destroy(device, wcb);
    }
+   list_for_each_entry_safe(struct wrapper_device_memory, mem,
+                            &device->device_memory_list, link) {
+      wrapper_device_memory_destroy(mem);
+   }
+
+   simple_mtx_unlock(&device->resource_mutex);
+
    list_for_each_entry_safe(struct vk_queue, queue, &device->vk.queues, link) {
       vk_queue_finish(queue);
       vk_free2(&device->vk.alloc, pAllocator, queue);
    }
-   device->dispatch_table.DestroyDevice(device->dispatch_handle, pAllocator);
+   if (device->dispatch_handle != VK_NULL_HANDLE) {
+      device->dispatch_table.DestroyDevice(device->
+         dispatch_handle, pAllocator);
+   }
+   simple_mtx_destroy(&device->resource_mutex);
    vk_device_finish(&device->vk);
    vk_free2(&device->vk.alloc, pAllocator, device);
+}
+
+static uint64_t
+unwrap_device_object(VkObjectType objectType,
+                     uint64_t objectHandle)
+{
+   switch(objectType) {
+   case VK_OBJECT_TYPE_DEVICE:
+      return (uint64_t)(uintptr_t)wrapper_device_from_handle((VkDevice)(uintptr_t)objectHandle)->dispatch_handle;
+   case VK_OBJECT_TYPE_QUEUE:
+      return (uint64_t)(uintptr_t)wrapper_queue_from_handle((VkQueue)(uintptr_t)objectHandle)->dispatch_handle;
+   case VK_OBJECT_TYPE_COMMAND_BUFFER:
+      return (uint64_t)(uintptr_t)wrapper_command_buffer_from_handle((VkCommandBuffer)(uintptr_t)objectHandle)->dispatch_handle;
+   default:
+      return objectHandle;
+   }
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+wrapper_SetPrivateData(VkDevice _device, VkObjectType objectType,
+                       uint64_t objectHandle,
+                       VkPrivateDataSlot privateDataSlot,
+                       uint64_t data) {
+   VK_FROM_HANDLE(wrapper_device, device, _device);
+
+   uint64_t object_handle = unwrap_device_object(objectType, objectHandle);
+   return device->dispatch_table.SetPrivateData(device->dispatch_handle,
+      objectType, object_handle, privateDataSlot, data);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+wrapper_GetPrivateData(VkDevice _device, VkObjectType objectType,
+                       uint64_t objectHandle,
+                       VkPrivateDataSlot privateDataSlot,
+                       uint64_t* pData) {
+   VK_FROM_HANDLE(wrapper_device, device, _device);
+
+   uint64_t object_handle = unwrap_device_object(objectType, objectHandle);
+   return device->dispatch_table.GetPrivateData(device->dispatch_handle,
+      objectType, object_handle, privateDataSlot, pData);
 }
