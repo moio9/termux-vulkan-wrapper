@@ -66,13 +66,6 @@ wrapper_features = custom_target(
   depend_files: vk_physical_device_features_gen_depend_files,
 )
 
-adrenotools_subproj = subproject('libadrenotools')
-
-adrenotools_dep = declare_dependency(
-  include_directories: adrenotools_subproj.get_variable('adrenotools_inc'),
-  link_with: adrenotools_subproj.get_variable('adrenotools_lib'),
-)
-
 wrapper_files = files(
   'wrapper_device.c',
   'wrapper_device_memory.c',
@@ -84,7 +77,6 @@ wrapper_deps = [
   idep_vulkan_runtime,
   idep_vulkan_util,
   idep_vulkan_wsi,
-  adrenotools_dep,
   dep_android,
 ]
 
