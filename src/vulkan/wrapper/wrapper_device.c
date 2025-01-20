@@ -176,18 +176,67 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
 
    wrapper_create_info.enabledExtensionCount = wrapper_enable_extension_count;
    wrapper_create_info.ppEnabledExtensionNames = wrapper_enable_extensions;
-
+   
+   pdf = (void *)pCreateInfo->pEnabledFeatures;
+   pdf2 = __vk_find_struct((void *)pCreateInfo->pNext,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
+            
    if (physical_device->enable_bc) {
-      pdf = (void *)pCreateInfo->pEnabledFeatures;
       if (pdf && pdf->textureCompressionBC)
          pdf->textureCompressionBC = false;
 
-      pdf2 = __vk_find_struct((void *)pCreateInfo->pNext,
-         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
       if (pdf2 && pdf2->features.textureCompressionBC)
          pdf2->features.textureCompressionBC = false;
    }
-
+   if (pdf && pdf->multiViewport) {
+         pdf->multiViewport &=
+            physical_device->base_supported_features.multiViewport;
+   }
+   if (pdf2 && pdf2->features.multiViewport) {
+         pdf2->features.multiViewport &=
+            physical_device->base_supported_features.multiViewport;
+   }
+   if (pdf && pdf->depthClamp) {
+        pdf->depthClamp &=
+            physical_device->base_supported_features.depthClamp;
+   }
+   if (pdf2 && pdf2->features.depthClamp) {
+        pdf2->features.depthClamp &=
+            physical_device->base_supported_features.depthClamp;
+   }
+   if (pdf && pdf->depthBiasClamp) {
+       pdf->depthBiasClamp &=
+            physical_device->base_supported_features.depthBiasClamp;
+   }
+   if (pdf2 && pdf2->features.depthBiasClamp) {
+       pdf2->features.depthBiasClamp &=
+            physical_device->base_supported_features.depthBiasClamp;
+   }
+    if (pdf && pdf->fillModeNonSolid) {
+       pdf->fillModeNonSolid &=
+            physical_device->base_supported_features.fillModeNonSolid;
+   }
+   if (pdf2 && pdf2->features.fillModeNonSolid) {
+       pdf2->features.fillModeNonSolid &=
+            physical_device->base_supported_features.fillModeNonSolid;
+   }
+    if (pdf && pdf->shaderClipDistance) {
+       pdf->shaderClipDistance &=
+            physical_device->base_supported_features.shaderClipDistance;
+   }
+   if (pdf2 && pdf2->features.shaderClipDistance) {
+       pdf2->features.shaderClipDistance &=
+            physical_device->base_supported_features.shaderClipDistance;
+   }
+   if (pdf && pdf->shaderCullDistance) {
+       pdf->shaderCullDistance &=
+            physical_device->base_supported_features.shaderCullDistance;
+   }
+   if (pdf2 && pdf2->features.shaderCullDistance) {
+       pdf2->features.shaderCullDistance &=
+            physical_device->base_supported_features.shaderCullDistance;
+   }
+   
    result = physical_device->dispatch_table.CreateDevice(
       physical_device->dispatch_handle, &wrapper_create_info,
          pAllocator, &device->dispatch_handle);
