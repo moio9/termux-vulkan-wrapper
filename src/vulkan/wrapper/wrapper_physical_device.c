@@ -257,3 +257,64 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       }
    }
 }
+
+VKAPI_ATTR void VKAPI_CALL
+wrapper_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
+                                            VkFormat format,
+                                            VkFormatProperties* pFormatProperties)
+{
+   VK_FROM_HANDLE(wrapper_physical_device, pdevice, physicalDevice);
+   pdevice->dispatch_table.GetPhysicalDeviceFormatProperties(pdevice->dispatch_handle, format, pFormatProperties);
+   switch (format) {
+      case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC2_UNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC2_SRGB_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC3_UNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC3_SRGB_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC4_UNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC4_SNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC5_UNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC5_SNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+          pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+          break;
+      case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+          pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+          break;
+      case VK_FORMAT_BC7_UNORM_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      case VK_FORMAT_BC7_SRGB_BLOCK:
+         pFormatProperties->optimalTilingFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+         break;
+      default:
+         break;   
+   }
+}
