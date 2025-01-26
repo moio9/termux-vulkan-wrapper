@@ -1,3 +1,5 @@
+#include <sys/stat.h>
+
 #include "vulkan/runtime/vk_instance.h"
 #include "vulkan/runtime/vk_physical_device.h"
 #include "vulkan/runtime/vk_device.h"
@@ -7,6 +9,7 @@
 #include "vulkan/util/vk_dispatch_table.h"
 #include "vulkan/wsi/wsi_common.h"
 #include "util/simple_mtx.h"
+#include "adrenotools/driver.h"
 
 extern const struct vk_instance_extension_table wrapper_instance_extensions;
 extern const struct vk_device_extension_table wrapper_device_extensions;

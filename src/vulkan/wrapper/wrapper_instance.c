@@ -56,6 +56,29 @@ static struct vk_instance_extension_table *supported_instance_extensions;
 
 #include <dlfcn.h>
 
+static void *get_vulkan_handle() 
+{
+   char *path = getenv("ADRENOTOOLS_DRIVER_PATH");
+   char *name = getenv("ADRENOTOOLS_DRIVER_NAME");
+   char *hooks = getenv("ADRENOTOOLS_HOOKS_PATH");
+#ifdef __TERMUX__
+   if (!hooks)
+      asprintf(&hooks, "%s/%s", getenv("PREFIX"), "lib");
+#endif
+
+   struct stat sb;
+
+   if (hooks && path && (stat(path, &sb) == 0)) {
+      char *temp;
+      asprintf(&temp, "%s%s", path, "temp");
+      mkdir(temp, S_IRWXU | S_IRWXG);
+      return  adrenotools_open_libvulkan(RTLD_NOW, ADRENOTOOLS_DRIVER_CUSTOM, temp, hooks, path, name, NULL, NULL);
+   }
+   else 
+      return dlopen(DEFAULT_VULKAN_PATH, RTLD_NOW | RTLD_LOCAL);
+}
+
+
 static bool vulkan_library_init()
 {
    if (vulkan_library_handle)
@@ -70,9 +93,7 @@ static bool vulkan_library_init()
    WRAPPER_DEBUG = parse_debug_string(debug_control_string,
                                       debug_control);
 
-   const char *env = getenv("WRAPPER_VULKAN_PATH");
-   vulkan_library_handle = dlopen(env ? env : DEFAULT_VULKAN_PATH,
-                                  RTLD_LOCAL | RTLD_NOW);
+   vulkan_library_handle = get_vulkan_handle();
 
    if (vulkan_library_handle) {
       create_instance = dlsym(vulkan_library_handle, "vkCreateInstance");
