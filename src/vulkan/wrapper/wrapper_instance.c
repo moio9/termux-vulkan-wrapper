@@ -290,8 +290,6 @@ wrapper_DestroyInstance(VkInstance _instance,
    VK_FROM_HANDLE(wrapper_instance, instance, _instance);
    instance->dispatch_table.DestroyInstance(instance->dispatch_handle,
                                             pAllocator);
-   vk_instance_finish(&instance->vk);
-   vk_free2(&instance->vk.alloc, pAllocator, instance);
 }
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
