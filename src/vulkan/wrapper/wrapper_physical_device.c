@@ -127,31 +127,16 @@ VkResult enumerate_physical_device(struct vk_instance *_instance)
       supported_features->multiViewport = true;
       supported_features->depthClamp = true;
       supported_features->depthBiasClamp = true;
+      supported_features->memoryMapPlaced = true;;
+      supported_features->memoryUnmapReserve = true;
+      supported_features->textureCompressionBC = true;
       supported_features->fillModeNonSolid = true;
       supported_features->shaderClipDistance = true;
       supported_features->shaderCullDistance = true;
       supported_features->presentWait = supported_features->timelineSemaphore;
       supported_features->swapchainMaintenance1 = true;
       supported_features->imageCompressionControlSwapchain = false;
-
-      pdevice->enable_bc =
-         !supported_features->textureCompressionBC
-         && (WRAPPER_DEBUG & WRAPPER_BC);
-
-      if (pdevice->enable_bc)
-         supported_features->textureCompressionBC = true;
-
-      pdevice->enable_map_memory_placed =
-         !pdevice->vk.supported_extensions.EXT_map_memory_placed
-         && (WRAPPER_DEBUG & WRAPPER_MAP_MEMORY_PLACED);
-
-      if (pdevice->enable_map_memory_placed) {
-         pdevice->vk.supported_extensions.EXT_map_memory_placed = true;
-         pdevice->vk.supported_extensions.KHR_map_memory2 = true;
-         supported_features->memoryMapPlaced = true;
-         supported_features->memoryUnmapReserve = true;
-      }
-
+      
       result = wsi_device_init(&pdevice->wsi_device,
                                wrapper_physical_device_to_handle(pdevice),
                                wrapper_wsi_proc_addr, &_instance->alloc, -1,

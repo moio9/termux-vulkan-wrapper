@@ -22,6 +22,8 @@ const struct vk_device_extension_table wrapper_device_extensions =
    .KHR_present_id = true,
    .KHR_present_wait = true,
    .KHR_incremental_present = true,
+   .EXT_map_memory_placed = true,
+   .KHR_map_memory2 = true,
 };
 
 const struct vk_device_extension_table wrapper_filter_extensions =
@@ -182,12 +184,13 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
    pdf2 = __vk_find_struct((void *)pCreateInfo->pNext,
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
             
-   if (physical_device->enable_bc) {
-      if (pdf && pdf->textureCompressionBC)
-         pdf->textureCompressionBC = false;
-
-      if (pdf2 && pdf2->features.textureCompressionBC)
-         pdf2->features.textureCompressionBC = false;
+   if (pdf && pdf->textureCompressionBC) {
+      pdf->textureCompressionBC &= 
+          physical_device->base_supported_features.textureCompressionBC;
+   }
+   if (pdf2 && pdf2->features.textureCompressionBC) {
+      pdf2->features.textureCompressionBC &=
+          physical_device->base_supported_features.textureCompressionBC;
    }
    if (pdf && pdf->multiViewport) {
          pdf->multiViewport &=
@@ -259,20 +262,7 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
                             &device->vk.alloc);
       return vk_error(physical_device, result);
    }
-
-   if (!physical_device->enable_map_memory_placed) {
-      device->vk.dispatch_table.AllocateMemory =
-         wrapper_device_trampolines.AllocateMemory;
-      device->vk.dispatch_table.MapMemory2KHR =
-         wrapper_device_trampolines.MapMemory2KHR;
-      device->vk.dispatch_table.UnmapMemory =
-         wrapper_device_trampolines.UnmapMemory;
-      device->vk.dispatch_table.UnmapMemory2KHR =
-         wrapper_device_trampolines.UnmapMemory2KHR;
-      device->vk.dispatch_table.FreeMemory =
-         wrapper_device_trampolines.FreeMemory;
-   }
-
+   
    *pDevice = wrapper_device_to_handle(device);
 
    return VK_SUCCESS;
