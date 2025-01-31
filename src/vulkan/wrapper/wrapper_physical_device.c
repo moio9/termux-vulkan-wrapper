@@ -1,3 +1,5 @@
+#include <math.h>
+
 #include "wrapper_private.h"
 #include "wrapper_entrypoints.h"
 #include "wrapper_trampolines.h"
@@ -174,10 +176,10 @@ VkResult enumerate_physical_device(struct vk_instance *_instance)
       };
       pdevice->dispatch_table.GetPhysicalDeviceProperties2(
          pdevice->dispatch_handle, &pdevice->properties2);
-
+         
       pdevice->dispatch_table.GetPhysicalDeviceMemoryProperties(
          pdevice->dispatch_handle, &pdevice->memory_properties);
-
+     
       const char *app_name = instance->vk.app_info.app_name
          ? instance->vk.app_info.app_name : "wrapper";
 
@@ -222,14 +224,14 @@ wrapper_EnumerateDeviceExtensionProperties(VkPhysicalDevice physicalDevice,
 
 VKAPI_ATTR void VKAPI_CALL
 wrapper_GetPhysicalDeviceFeatures(VkPhysicalDevice physicalDevice,
-                                  VkPhysicalDeviceFeatures* pFeatures)
+                                  VkPhysicalDeviceFeatures* pFeatures) 
 {
    return vk_common_GetPhysicalDeviceFeatures(physicalDevice, pFeatures);
 }
 
 VKAPI_ATTR void VKAPI_CALL
 wrapper_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
-                                   VkPhysicalDeviceFeatures2* pFeatures) {
+                                   VkPhysicalDeviceFeatures2* pFeatures) {                                                              
    vk_common_GetPhysicalDeviceFeatures2(physicalDevice, pFeatures);
 }
 
@@ -258,6 +260,158 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
    }
 }
 
+VKAPI_ATTR VkResult VKAPI_CALL
+wrapper_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
+	                                           VkFormat format,
+	                                           VkImageType type,
+	                                           VkImageTiling tiling,
+	                                           VkImageUsageFlags usage,
+	                                           VkImageCreateFlags flags,
+	                                           VkImageFormatProperties *pImageFormatProperties)
+{
+   VkResult result;
+   VK_FROM_HANDLE(wrapper_physical_device, pdevice, physicalDevice);
+
+   result = pdevice->dispatch_table.GetPhysicalDeviceImageFormatProperties(
+      pdevice->dispatch_handle, format, type, tiling, usage, flags, pImageFormatProperties);
+      
+   switch(format) {
+   case VK_FORMAT_BC1_RGB_SRGB_BLOCK:                                    
+   case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+   case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+   case VK_FORMAT_BC2_UNORM_BLOCK:
+   case VK_FORMAT_BC2_SRGB_BLOCK:
+   case VK_FORMAT_BC3_UNORM_BLOCK:
+   case VK_FORMAT_BC3_SRGB_BLOCK:
+   case VK_FORMAT_BC4_UNORM_BLOCK:
+   case VK_FORMAT_BC4_SNORM_BLOCK:
+   case VK_FORMAT_BC5_UNORM_BLOCK:
+   case VK_FORMAT_BC5_SNORM_BLOCK:
+   case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+   case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+   case VK_FORMAT_BC7_UNORM_BLOCK:
+   case VK_FORMAT_BC7_SRGB_BLOCK:
+      if (type & VK_IMAGE_TYPE_1D) {
+         pImageFormatProperties->maxExtent.width = pdevice->properties2.properties.limits.maxImageDimension1D;
+         pImageFormatProperties->maxExtent.height = 1;
+         pImageFormatProperties->maxExtent.depth = 1;
+      }
+      if (type & VK_IMAGE_TYPE_2D) {
+         if (flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) {
+            pImageFormatProperties->maxExtent.width = pdevice->properties2.properties.limits.maxImageDimensionCube;
+            pImageFormatProperties->maxExtent.height = pdevice->properties2.properties.limits.maxImageDimensionCube;
+         }
+         else {
+            pImageFormatProperties->maxExtent.width = pdevice->properties2.properties.limits.maxImageDimension2D;
+            pImageFormatProperties->maxExtent.height = pdevice->properties2.properties.limits.maxImageDimension2D;
+         }
+         pImageFormatProperties->maxExtent.depth = 1;
+      }
+      if (type & VK_IMAGE_TYPE_3D) {
+         pImageFormatProperties->maxExtent.width = pdevice->properties2.properties.limits.maxImageDimension3D;
+         pImageFormatProperties->maxExtent.height = pdevice->properties2.properties.limits.maxImageDimension3D;
+         pImageFormatProperties->maxExtent.depth = pdevice->properties2.properties.limits.maxImageDimension3D;
+      }
+      if (tiling & VK_IMAGE_TILING_LINEAR ||
+             tiling & VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT ||
+             flags & VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT)
+             pImageFormatProperties->maxMipLevels = 1;
+      else 
+         pImageFormatProperties->maxMipLevels = log2(
+            pImageFormatProperties->maxExtent.width > pImageFormatProperties->maxExtent.height ? pImageFormatProperties->maxExtent.width :  pImageFormatProperties->maxExtent.height 	
+         );
+    
+      if (tiling & VK_IMAGE_TILING_LINEAR ||
+            ((tiling & VK_IMAGE_TILING_OPTIMAL) && type & VK_IMAGE_TYPE_3D))
+         pImageFormatProperties->maxArrayLayers = 1;
+      else
+         pImageFormatProperties->maxArrayLayers = pdevice->properties2.properties.limits.maxImageArrayLayers;
+      // We do not handle any case here for now
+      pImageFormatProperties->sampleCounts = VK_SAMPLE_COUNT_1_BIT;      
+      pImageFormatProperties->maxResourceSize = 562949953421312;
+      return VK_SUCCESS;
+   default:
+      break;
+   }
+
+   return result;   
+}	                                           
+
+VKAPI_ATTR VkResult VKAPI_CALL
+wrapper_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
+                                                const VkPhysicalDeviceImageFormatInfo2* pImageFormatInfo,
+                                                VkImageFormatProperties2* pImageFormatProperties)
+{
+   VkResult result;
+   VK_FROM_HANDLE(wrapper_physical_device, pdevice, physicalDevice);
+   
+   result = pdevice->dispatch_table.GetPhysicalDeviceImageFormatProperties2(
+      pdevice->dispatch_handle, pImageFormatInfo, pImageFormatProperties);
+
+   switch(pImageFormatInfo->format) {
+   case VK_FORMAT_BC1_RGB_SRGB_BLOCK:                                    
+   case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+   case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+   case VK_FORMAT_BC2_UNORM_BLOCK:
+   case VK_FORMAT_BC2_SRGB_BLOCK:
+   case VK_FORMAT_BC3_UNORM_BLOCK:
+   case VK_FORMAT_BC3_SRGB_BLOCK:
+   case VK_FORMAT_BC4_UNORM_BLOCK:
+   case VK_FORMAT_BC4_SNORM_BLOCK:
+   case VK_FORMAT_BC5_UNORM_BLOCK:
+   case VK_FORMAT_BC5_SNORM_BLOCK:
+   case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+   case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+   case VK_FORMAT_BC7_UNORM_BLOCK:
+   case VK_FORMAT_BC7_SRGB_BLOCK:
+      if (pImageFormatInfo->type & VK_IMAGE_TYPE_1D) {
+         pImageFormatProperties->imageFormatProperties.maxExtent.width = pdevice->properties2.properties.limits.maxImageDimension1D;
+         pImageFormatProperties->imageFormatProperties.maxExtent.height = 1;
+         pImageFormatProperties->imageFormatProperties.maxExtent.depth = 1;
+      }
+      if (pImageFormatInfo->type & VK_IMAGE_TYPE_2D) {
+         if (pImageFormatInfo->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) {
+            pImageFormatProperties->imageFormatProperties.maxExtent.width = pdevice->properties2.properties.limits.maxImageDimensionCube;
+            pImageFormatProperties->imageFormatProperties.maxExtent.height = pdevice->properties2.properties.limits.maxImageDimensionCube;
+         }
+         else {
+            pImageFormatProperties->imageFormatProperties.maxExtent.width = pdevice->properties2.properties.limits.maxImageDimension2D;
+            pImageFormatProperties->imageFormatProperties.maxExtent.height = pdevice->properties2.properties.limits.maxImageDimension2D;
+         }
+         pImageFormatProperties->imageFormatProperties.maxExtent.depth = 1;
+      }
+      if (pImageFormatInfo->type & VK_IMAGE_TYPE_3D) {
+         pImageFormatProperties->imageFormatProperties.maxExtent.width = pdevice->properties2.properties.limits.maxImageDimension3D;
+         pImageFormatProperties->imageFormatProperties.maxExtent.height = pdevice->properties2.properties.limits.maxImageDimension3D;
+         pImageFormatProperties->imageFormatProperties.maxExtent.depth = pdevice->properties2.properties.limits.maxImageDimension3D;
+      }
+      // We do not handle the case where vkPhysicalDeviceImageFormatInfo pNext has
+      // a handleType which does not require mipMaps
+      if (pImageFormatInfo->tiling & VK_IMAGE_TILING_LINEAR ||
+             pImageFormatInfo->tiling & VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT ||
+             pImageFormatInfo->flags & VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT)
+             pImageFormatProperties->imageFormatProperties.maxMipLevels = 1;
+      else 
+         pImageFormatProperties->imageFormatProperties.maxMipLevels = log2(
+            pImageFormatProperties->imageFormatProperties.maxExtent.width > pImageFormatProperties->imageFormatProperties.maxExtent.height ? pImageFormatProperties->imageFormatProperties.maxExtent.width :  pImageFormatProperties->imageFormatProperties.maxExtent.height 	
+         );
+    
+      if (pImageFormatInfo->tiling & VK_IMAGE_TILING_LINEAR ||
+            ((pImageFormatInfo->tiling & VK_IMAGE_TILING_OPTIMAL) && pImageFormatInfo->type & VK_IMAGE_TYPE_3D))
+         pImageFormatProperties->imageFormatProperties.maxArrayLayers = 1;
+      else
+         pImageFormatProperties->imageFormatProperties.maxArrayLayers = pdevice->properties2.properties.limits.maxImageArrayLayers;
+      // We do not handle any case here for now
+      pImageFormatProperties->imageFormatProperties.sampleCounts = VK_SAMPLE_COUNT_1_BIT;      
+      pImageFormatProperties->imageFormatProperties.maxResourceSize = 562949953421312;
+      return VK_SUCCESS;
+   default:
+      break;
+   }
+
+   return result;
+}                                                
+
 VKAPI_ATTR void VKAPI_CALL
 wrapper_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
                                             VkFormat format,
@@ -284,7 +438,7 @@ wrapper_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    case VK_FORMAT_BC6H_SFLOAT_BLOCK:
    case VK_FORMAT_BC7_UNORM_BLOCK:
    case VK_FORMAT_BC7_SRGB_BLOCK:
-      pFormatProperties->optimalTilingFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+      pFormatProperties->optimalTilingFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
       break;
    default:
       break;   
