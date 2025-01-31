@@ -254,6 +254,18 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          placed_prop->minPlacedMemoryMapAlignment = os_page_size;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES:
+      {
+         VkPhysicalDeviceFloatControlsProperties *float_prop =
+              (VkPhysicalDeviceFloatControlsProperties *)prop;
+         float_prop->shaderDenormFlushToZeroFloat16 = false;
+         float_prop->shaderDenormFlushToZeroFloat32 = false;
+         float_prop->shaderRoundingModeRTEFloat16 = false;
+         float_prop->shaderRoundingModeRTEFloat32 = false;
+         float_prop->shaderSignedZeroInfNanPreserveFloat16 = false;
+         float_prop->shaderSignedZeroInfNanPreserveFloat32 = false;
+         break;
+      }
       default:
          break;
       }
