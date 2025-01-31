@@ -258,6 +258,8 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       {
          VkPhysicalDeviceFloatControlsProperties *float_prop =
               (VkPhysicalDeviceFloatControlsProperties *)prop;
+         float_prop->denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE;
+         float_prop->roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE;     
          float_prop->shaderDenormFlushToZeroFloat16 = false;
          float_prop->shaderDenormFlushToZeroFloat32 = false;
          float_prop->shaderRoundingModeRTEFloat16 = false;
@@ -270,6 +272,8 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       {
          VkPhysicalDeviceVulkan12Properties *vk12_prop =
               (VkPhysicalDeviceVulkan12Properties *)prop;
+         vk12_prop->denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE;
+         vk12_prop->roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE;
          vk12_prop->shaderDenormFlushToZeroFloat16 = false;
          vk12_prop->shaderDenormFlushToZeroFloat32 = false;
          vk12_prop->shaderRoundingModeRTEFloat16 = false;
