@@ -266,6 +266,18 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          float_prop->shaderSignedZeroInfNanPreserveFloat32 = false;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES:
+      {
+         VkPhysicalDeviceVulkan12Properties *vk12_prop =
+              (VkPhysicalDeviceVulkan12Properties *)prop;
+         vk12_prop->shaderDenormFlushToZeroFloat16 = false;
+         vk12_prop->shaderDenormFlushToZeroFloat32 = false;
+         vk12_prop->shaderRoundingModeRTEFloat16 = false;
+         vk12_prop->shaderRoundingModeRTEFloat32 = false;
+         vk12_prop->shaderSignedZeroInfNanPreserveFloat16 = false;
+         vk12_prop->shaderSignedZeroInfNanPreserveFloat32 = false;
+         break;
+      }
       default:
          break;
       }
