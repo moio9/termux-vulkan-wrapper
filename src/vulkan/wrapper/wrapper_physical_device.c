@@ -239,10 +239,10 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          placed_prop->minPlacedMemoryMapAlignment = os_page_size;
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES:
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR:
       {
-         VkPhysicalDeviceFloatControlsProperties *float_prop =
-              (VkPhysicalDeviceFloatControlsProperties *)prop;
+         VkPhysicalDeviceFloatControlsPropertiesKHR *float_prop =
+              (VkPhysicalDeviceFloatControlsPropertiesKHR *)prop;
          float_prop->denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE;
          float_prop->roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE;     
          float_prop->shaderDenormFlushToZeroFloat16 = false;
