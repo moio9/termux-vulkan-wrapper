@@ -239,6 +239,14 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          placed_prop->minPlacedMemoryMapAlignment = os_page_size;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_PROPERTIES_EXT:
+      {
+      	 VkPhysicalDeviceTexelBufferAlignmentPropertiesEXT *texel_prop =
+      	      (VkPhysicalDeviceTexelBufferAlignmentPropertiesEXT *)prop;
+      	 texel_prop->storageTexelBufferOffsetAlignmentBytes = 1;
+      	 texel_prop->uniformTexelBufferOffsetAlignmentBytes = 1;
+      	 break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR:
       {
          VkPhysicalDeviceFloatControlsPropertiesKHR *float_prop =
@@ -273,6 +281,14 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          vk12_prop->shaderRoundingModeRTEFloat32 = false;
          vk12_prop->shaderSignedZeroInfNanPreserveFloat16 = false;
          vk12_prop->shaderSignedZeroInfNanPreserveFloat32 = false;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES:
+      {
+         VkPhysicalDeviceVulkan13Properties *vk13_prop =
+              (VkPhysicalDeviceVulkan13Properties *)prop;
+         vk13_prop->storageTexelBufferOffsetAlignmentBytes = 1;
+         vk13_prop->uniformTexelBufferOffsetAlignmentBytes = 1;
          break;
       }
       default:
