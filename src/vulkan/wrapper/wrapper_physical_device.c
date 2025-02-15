@@ -253,6 +253,14 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          float_prop->shaderSignedZeroInfNanPreserveFloat32 = false;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES:
+      {
+         VkPhysicalDeviceVulkan11Properties *vk11_prop =
+              (VkPhysicalDeviceVulkan11Properties *)prop;
+         vk11_prop->subgroupSupportedOperations = 0;
+         vk11_prop->subgroupSupportedStages = 0;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES:
       {
          VkPhysicalDeviceVulkan12Properties *vk12_prop =
