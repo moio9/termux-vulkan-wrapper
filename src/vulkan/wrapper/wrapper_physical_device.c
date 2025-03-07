@@ -291,6 +291,13 @@ wrapper_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          vk13_prop->uniformTexelBufferOffsetAlignmentBytes = 1;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES:
+      {
+         VkPhysicalDeviceSubgroupProperties *subgroup_prop =
+              (VkPhysicalDeviceSubgroupProperties *)prop;
+         subgroup_prop->supportedOperations = 0;
+         subgroup_prop->supportedStages = 0;
+      }
       default:
          break;
       }
