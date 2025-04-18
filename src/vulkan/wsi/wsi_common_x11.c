@@ -1922,11 +1922,11 @@ x11_image_init(VkDevice device_h, struct x11_swapchain *chain,
          
 #ifdef __TERMUX__
       int sock_fds[2] = { -1, -1 };
-      if (image->base.ahb) {
+      if (image->base.ahardware_buffer) {
          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sock_fds) < 0) {
              return VK_ERROR_OUT_OF_HOST_MEMORY;
          }
-         AHardwareBuffer_sendHandleToUnixSocket(image->base.ahb, sock_fds[0]);
+         AHardwareBuffer_sendHandleToUnixSocket(image->base.ahardware_buffer, sock_fds[0]);
          image->base.dma_buf_fd = sock_fds[1];
          image->base.drm_modifier = 1255;
       }
@@ -1963,7 +1963,7 @@ x11_image_init(VkDevice device_h, struct x11_swapchain *chain,
                                               image->base.drm_modifier,
                                               fds);
 #ifdef __TERMUX__
-      if (image->base.ahb) {
+      if (image->base.ahardware_buffer) {
          xcb_flush(chain->conn);
          read(sock_fds[0], &image->base.dma_buf_fd, 1);
          for (int i = 0; i < ARRAY_SIZE(sock_fds); i++) {

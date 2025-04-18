@@ -88,7 +88,7 @@ struct wsi_image_info {
    VkImageFormatListCreateInfo format_list;
    VkImageDrmFormatModifierListCreateInfoEXT drm_mod_list;
 #ifdef __TERMUX__
-   struct AHardwareBuffer_Desc *ahb_desc;
+   struct AHardwareBuffer_Desc *ahardware_buffer_desc;
 #endif
 
    enum wsi_image_type image_type;
@@ -172,7 +172,7 @@ struct wsi_image {
 #endif
    void *cpu_map;
 #ifdef __TERMUX__
-   struct AHardwareBuffer *ahb;
+   struct AHardwareBuffer *ahardware_buffer;
 #endif
 };
 
@@ -449,6 +449,17 @@ void wsi_headless_finish_wsi(struct wsi_device *wsi_device,
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(wsi_swapchain, base, VkSwapchainKHR,
                                VK_OBJECT_TYPE_SWAPCHAIN_KHR)
+                               
+enum wsi_swapchain_blit_type
+wsi_get_ahardware_buffer_blit_type(const struct wsi_device *wsi,
+                      const struct wsi_base_image_params *params,
+                                   VkDevice device);
+                                   
+VkResult wsi_configure_ahardware_buffer_image(
+   const struct wsi_swapchain *chain,
+   const VkSwapchainCreateInfoKHR *pCreateInfo,
+   const struct wsi_base_image_params *params,
+   struct wsi_image_info *info);                               
 
 #ifdef __cplusplus
 }
