@@ -127,7 +127,7 @@ VkResult enumerate_physical_device(struct vk_instance *_instance)
       supported_features->multiViewport = true;
       supported_features->depthClamp = true;
       supported_features->depthBiasClamp = true;
-      supported_features->memoryMapPlaced = true;;
+      supported_features->memoryMapPlaced = true;
       supported_features->memoryUnmapReserve = true;
       supported_features->textureCompressionBC = true;
       supported_features->fillModeNonSolid = true;

@@ -21,8 +21,10 @@ const struct vk_device_extension_table wrapper_device_extensions =
 #endif
    .KHR_present_id = true,
    .KHR_present_wait = true,
+   .KHR_dynamic_rendering = true,
    .KHR_incremental_present = true,
    .EXT_map_memory_placed = true,
+   .KHR_maintenance4 = true,
    .KHR_map_memory2 = true,
 };
 
@@ -171,9 +173,10 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
                device);
       return vk_error(physical_device, result);
    }
-
+  
    wrapper_filter_enabled_extensions(device,
       &wrapper_enable_extension_count, wrapper_enable_extensions);
+  
    wrapper_append_required_extensions(&device->vk,
       &wrapper_enable_extension_count, wrapper_enable_extensions);
 
@@ -183,7 +186,7 @@ wrapper_CreateDevice(VkPhysicalDevice physicalDevice,
    pdf = (void *)pCreateInfo->pEnabledFeatures;
    pdf2 = __vk_find_struct((void *)pCreateInfo->pNext,
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
-            
+    
    if (pdf && pdf->textureCompressionBC) {
       pdf->textureCompressionBC &= 
           physical_device->base_supported_features.textureCompressionBC;
