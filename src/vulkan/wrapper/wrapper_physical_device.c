@@ -52,14 +52,17 @@ wrapper_setup_device_extensions(struct wrapper_physical_device *pdevice) {
 
 static void
 wrapper_apply_device_extension_blacklist(struct wrapper_physical_device *physical_device) {
-   const char *blacklist = getenv("WRAPPER_EXTENSION_BLACKLIST");
+   char *blacklist = getenv("WRAPPER_EXTENSION_BLACKLIST");
    if (!blacklist)
       return;
-
-   for (int i = 0; i < VK_DEVICE_EXTENSION_COUNT; i++) {
-      if (strstr(blacklist, vk_device_extensions[i].extensionName)) {
-         physical_device->vk.supported_extensions.extensions[i] = false;
+   char *extension = strtok(blacklist, ",");
+   while (extension != NULL) {
+      for (int i = 0; i < VK_DEVICE_EXTENSION_COUNT; i++) {
+         if (strstr(extension, vk_device_extensions[i].extensionName)) {
+            physical_device->vk.supported_extensions.extensions[i] = false;
+         }
       }
+      extension = strtok(NULL, ",");
    }
 }
 
